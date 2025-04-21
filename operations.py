@@ -120,24 +120,9 @@ class DbOperations:
                             break
                 masked_query.append(token.value)
         return ''.join(masked_query)
-    
-    @time_it
-    def result_masking(self,results):
-        de_anonymized = []
-
-        for row in results:
-            new_row={}
-            for col,val in row.items():
-                key=f"{col}"
-                if key in self.forward_mapping and val in self.forward_mapping[key]:
-                    new_row[col]=self.forward_mapping[key][val]
-                else:
-                    new_row[col]=val
-            de_anonymized.append(new_row)
-        return de_anonymized
 
     @time_it
-    def result_unmasking(self,results,revese_mapping_path):
+    def unmasking_results(self,results):
         de_anonymized = []
         for row in results:
             new_row={}
@@ -145,6 +130,20 @@ class DbOperations:
                 key=f"{col}"
                 if key in self.backward_mapping and val in self.backward_mapping[key]:
                     new_row[col]=self.backward_mapping[key][val]
+                else:
+                    new_row[col]=val
+            de_anonymized.append(new_row)
+        return de_anonymized
+    
+    @time_it
+    def masking_results(self,results):
+        de_anonymized = []
+        for row in results:
+            new_row={}
+            for col,val in row.items():
+                key=f"{col}"
+                if key in self.forward_mapping and val in self.forward_mapping[key]:
+                    new_row[col]=self.forward_mapping[key][val]
                 else:
                     new_row[col]=val
             de_anonymized.append(new_row)
@@ -168,7 +167,10 @@ The dataset includes information on two companies. infosys, operating in the inf
 The dataset includes information on two companies. infosys, operating in the information technology and services industry, is headquartered in Bangalore, Karnataka, India. Founded in 1981, the company has a size range of 10001+ employees, with an estimated 104,752 current employees and 215,718 total employees. Its domain is infosys.com, and its LinkedIn page corresponds to Infosys. The second company, pwd, belongs to the internet industry and is located in Gresik, Jawa Timur, Indonesia, though it is registered in Bermuda. Its founding year is not specified. The company has a workforce in the range of 1001 to 5000 employees, with 1,441 current employees and a total estimate of 1,541. Its domain is pwwwd.com, and it is listed on LinkedIn under the name PWD.
 The dataset includes information on two companies. infosys, operating in the information technology and services industry, is headquartered in Bangalore, Karnataka, India. Founded in 1981, the company has a size range of 10001+ employees, with an estimated 104,752 current employees and 215,718 total employees. Its domain is infosys.com, and its LinkedIn page corresponds to Infosys. The second company, pwd, belongs to the internet industry and is located in Gresik, Jawa Timur, Indonesia, though it is registered in Bermuda. Its founding year is not specified. The company has a workforce in the range of 1001 to 5000 employees, with 1,441 current employees and a total estimate of 1,541. Its domain is pwwwd.com, and it is listed on LinkedIn under the name PWD.'''
 summary='name is Ford-Mendez Corporation Inc. and Salazar, Thompson and Lawson Technologies Co. and domain is https://clark-cabrera.vargas.co'
-res = op.mask_sentence(s)
-print(res)
+# res = op.mask_sentence(s)
+# print(res)
 # sum=op.unmask_summary(summary)
 # print(sum)
+test='''[{'id': 1454663, 'name': 'infosys', 'domain': 'infosys.com', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'pwd', 'domain': 'pwwwd.com', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]'''
+aa=op.result_masking(test)
+print(aa)
