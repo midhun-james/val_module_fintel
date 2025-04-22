@@ -12,9 +12,16 @@ from datetime import datetime
 import random
 import re
 class DataMaskerCSV:
-    def __init__(self, faker_data_path, entity_column_map):
-        self.entity_column_map = entity_column_map
-        with gzip.open(faker_data_path, 'rt',encoding='utf-8') as f:
+    def __init__(self):
+        self.entity_column_map={
+            'name': 'company',
+            'domain': 'url',
+            'locality': 'location',
+            'country': 'country',
+            'linkedin url': 'url',
+        }
+        self.faker_data_path= 'faker_data_v2.json.gz'
+        with gzip.open(self.faker_data_path, 'rt',encoding='utf-8') as f:
             faker_list = json.load(f)
         self.faker_data = {}
         for d in faker_list:
@@ -130,116 +137,6 @@ class DataMaskerCSV:
         except Exception as e:
             print(f"❌ Failed to import CSV: {e}")
     
-    @time_it
-    def query_mask(self,query,forward_mapping_path):
-        with open(forward_mapping_path, 'r') as f:
-            self.forward_mapping = json.load(f)
-        parsed = sqlparse.parse(query)
-        masked_query = []
-        for statement in parsed:
-            tokens=list(statement.flatten())
-            for token in tokens:
-                if token.ttype in (String.Single, Literal.String.Single):
-                    value=token.value.strip("'\'")
-                    
-                    replaced=False
-                    for ent in self.forward_mapping.values():
-                        if value in ent:
-                            fake_value=ent[value]
-                            token.value=f"'{fake_value}'"
-                            replaced=True
-                            break
-                masked_query.append(token.value)
-        return ''.join(masked_query)
-    @time_it
-    def query_unmask(self,query,reverse_mapping_path):
-        with open(reverse_mapping_path, 'r') as f:
-            self.forward_mapping = json.load(f)
-        parsed = sqlparse.parse(query)
-        masked_query = []
-        for statement in parsed:
-            tokens=list(statement.flatten())
-            for token in tokens:
-                if token.ttype in (String.Single, Literal.String.Single):
-                    value=token.value.strip("'\'")
-                    
-                    replaced=False
-                    for ent in self.backward_mapping.values():
-                        if value in ent:
-                            real_value=ent[value]
-                            token.value=f"'{real_value}'"
-                            replaced=True
-                            break
-                masked_query.append(token.value)
-        return ''.join(masked_query)
-    
-    @time_it
-    def demasking_results(self,results,revese_mapping_path):
-        de_anonymized = []
-        with open(revese_mapping_path) as f:
-            reverse_mapping = json.load(f)
-        for row in results:
-            new_row={}
-            for col,val in row.items():
-                key=f"{col}"
-                if key in reverse_mapping and val in reverse_mapping[key]:
-                    new_row[col]=reverse_mapping[key][val]
-                else:
-                    new_row[col]=val
-            de_anonymized.append(new_row)
-        return de_anonymized
-    
-
-    @time_it
-
-
-
-    def mask_sentence(self, sentence, forward_mapping_path):
-        start = time.time()
-        with open(forward_mapping_path, 'r') as f:
-            self.forward_mapping = json.load(f)
-        end = time.time()
-        print("load:", end - start)
-
-        flat_map = {}
-        start = time.time()
-        for column, value_map in self.forward_mapping.items():
-            for original, fake in value_map.items():
-                flat_map[original] = fake
-        end = time.time()
-        print("flatten:", end - start)
-
-        # Pre-lowercased lookup for fast replacement
-        flat_map_lower = {k.lower(): v for k, v in flat_map.items()}
-
-        # Identify which keys are present in the sentence (case-insensitive)
-        sentence_lower = sentence.lower()
-        matched_keys = [k for k in flat_map if k.lower() in sentence_lower]
-
-        if matched_keys:
-            # Sort matched keys by length (longest first) to avoid partial replacement
-            matched_keys.sort(key=len, reverse=True)
-
-            # Build regex pattern with alternation
-            pattern = re.compile(
-                r'(?<!\w)(' + '|'.join(re.escape(k) for k in matched_keys) + r')(?=[\s\.,;:!?"]|$)',
-                flags=re.IGNORECASE
-            )
-
-            def replace_match(match):
-                word = match.group(0)
-                return flat_map_lower.get(word.lower(), word)
-
-            sentence = pattern.sub(replace_match, sentence)
-
-        return sentence
-
-
-
-
-
-    
-
 entity_column_map = {
     'name': 'company',
     'domain': 'url',
@@ -251,44 +148,28 @@ entity_column_map = {
 sensitive_columns = ['name', 'domain',]
 faker_data_path = 'faker_data_v2.json.gz'
 
-masker = DataMaskerCSV(faker_data_path, entity_column_map)
+masker = DataMaskerCSV()
 
-# masker.anonymize_csv(
-#     input_csv_path='companies_100k.csv',
-#     sensitive_columns=sensitive_columns,
-#     output_csv_path='anonymized_data.csv',
-#     forward_map_path='f_mapping.json',
-#     backward_map_path='b_mapping.json'
-# )
-# masker.deanonymize_csv(
-#     anonymized_csv_path='anonymized_data.csv',
-#     sensitive_columns=sensitive_columns,
-#     backward_mapping_path='b_mapping.json',
-#     deanonymized_csv_path='deanonymized_data.csv'
-# )
-# masker.csv_to_sql(
-#     csv_path='companies_100k.csv',
-#     _db_path='company.db',
-#     table_name='companies_100k'
-# )
-# masker.csv_to_sql(
-#     csv_path='anonymized_data.csv',
-#     _db_path='company.db',
-#     table_name='companies_masked'
-# )
-
-# sql="SELECT * FROM employees WHERE company = 'ibm'"
-# masked_sql=masker.query_mask(sql,forward_mapping_path='f_mapping.json')
-# print(masked_sql)
-# masked_results = [
-#     {'name': 'Ford-Mendez Corporation Inc.', 'domain': 'https://carrillo.harvey.co',}
-# ]
-# demasked=masker.demasking_results(
-#     results=masked_results,
-#     revese_mapping_path='b_mapping.json'
-# )
-# print(demasked)
-
-# input="Show all employees from pwd , infosys where domain is ibm.com, infosys.com"
-# masked=masker.mask_sentence(input,forward_mapping_path='f_mapping.json')
-# print(masked)
+masker.anonymize_csv(
+    input_csv_path='companies_100k.csv',
+    sensitive_columns=sensitive_columns,
+    output_csv_path='anonymized_data.csv',
+    forward_map_path='f_mapping.json',
+    backward_map_path='b_mapping.json'
+)
+masker.deanonymize_csv(
+    anonymized_csv_path='anonymized_data.csv',
+    sensitive_columns=sensitive_columns,
+    backward_mapping_path='b_mapping.json',
+    deanonymized_csv_path='deanonymized_data.csv'
+)
+masker.csv_to_sql(
+    csv_path='companies_100k.csv',
+    _db_path='company.db',
+    table_name='companies_100k'
+)
+masker.csv_to_sql(
+    csv_path='anonymized_data.csv',
+    _db_path='company.db',
+    table_name='companies_masked'
+)
