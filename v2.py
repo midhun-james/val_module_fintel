@@ -11,6 +11,7 @@ from sqlparse.tokens import Literal,String
 from datetime import datetime
 import random
 import re
+import string
 class DataMaskerCSV:
     def __init__(self):
         self.entity_column_map={
@@ -31,6 +32,20 @@ class DataMaskerCSV:
         self.backward_mapping = defaultdict(dict)
         self.fake_data_index = defaultdict(int)
         self.used_fakes = defaultdict(set)
+        self.used_urls = set()
+        self.url_extensions =  [
+                                    ".com", ".net", ".org", ".edu", ".gov", ".co", ".us", ".uk", ".in", ".ru",
+                                    ".jp", ".cn", ".de", ".fr", ".it", ".nl", ".es", ".br", ".au", ".ca",
+                                    ".ch", ".se", ".no", ".za", ".mx", ".ar", ".be", ".kr", ".pl", ".tr",
+                                    ".ua", ".ir", ".sa", ".ae", ".my", ".sg", ".hk", ".tw", ".nz", ".id",
+                                    ".th", ".ph", ".vn", ".bd", ".lk", ".np", ".pk", ".cz", ".gr", ".hu",
+                                    ".fi", ".dk", ".il", ".ie", ".pt", ".sk", ".si", ".ro", ".bg", ".rs",
+                                    ".lt", ".lv", ".ee", ".hr", ".ba", ".md", ".ge", ".kz", ".by", ".tm",
+                                    ".uz", ".af", ".qa", ".om", ".kw", ".bh", ".ye", ".jo", ".lb", ".sy",
+                                    ".iq", ".ps", ".az", ".am", ".kg", ".mn", ".bt", ".mv", ".mm", ".kh",
+                                    ".la", ".tl", ".sb", ".fj", ".pg", ".to", ".tv", ".ws", ".fm", ".ki"
+                                ]
+ 
 
     @staticmethod
     def time_it(func):
@@ -46,32 +61,65 @@ class DataMaskerCSV:
     def _get_fake_value(self, entity, original_value, column_name=None):
         """Return consistent fake value for an original value."""
         col_key = column_name or entity  # default fallback if column not passed
-        global ID
 
 
         if original_value in self.forward_mapping[col_key]:
             return self.forward_mapping[col_key][original_value]
         if entity =='url':
-            domain1,domain2=random.sample(self.domain_pool,2)
-            fake_value=f"https://{domain1.lower()}.{domain2.lower()}.co"
+            while True:
+                domain1,domain2=random.sample(self.domain_pool,2)
+                fake_value=f"https://{domain1.lower()}.{domain2.lower()}.co"
+                if fake_value not in self.used_fakes[entity]:
+                    break
+            self.used_fakes[entity].add(fake_value)
+            self.forward_mapping[col_key][original_value] = fake_value
+            self.backward_mapping[col_key][fake_value] = original_value
+            return fake_value
+        
+        while self.fake_data_index[entity] < len(self.faker_data[entity]):
+            fake_value = self.faker_data[entity][self.fake_data_index[entity]]
+            self.fake_data_index[entity] += 1
+
             if fake_value not in self.used_fakes[entity]:
                 self.used_fakes[entity].add(fake_value)
                 self.forward_mapping[col_key][original_value] = fake_value
                 self.backward_mapping[col_key][fake_value] = original_value
+                return fake_value
+        
+        counter=1
+        base_fake_value=original_value
+        while True:
+            fallback_value= self.modify_fake_value(entity, base_fake_value, column_name=column_name, counter=counter)
+            if fallback_value not in self.used_fakes[entity]:
+                self.used_fakes[entity].add(fallback_value)
+                self.forward_mapping[col_key][original_value] = fallback_value
+                self.backward_mapping[col_key][fallback_value] = original_value
+            counter+=1
 
+        
+    def modify_fake_value(self,entity,original_value,column_name=None,counter=1):
+        """Modify the fake value to ensure uniqueness."""
+        if entity=="name":
+            return original_value+f"{string.ascii_lowercase[counter % 26]}"
+        elif entity=="email":
+            name,domain=original_value.split('@')
+            return f"{name}{counter}@{domain}"
+        elif entity=="url":
+            fake_value=original_value
+            while fake_value in self.used_urls:
+                ext=random.choice(self.url_extensions)
+                if not fake_value.endswith(ext):
+                    fake_value=fake_value+ext
+            self.used_urls.add(fake_value)
             return fake_value
+        elif entity=="phone":
+            return f"{original_value[:-2]}{counter % 100:02d}"
+        elif entity == "company":
+            return f"{original_value} Group {counter % 100_000_000 + 1}"
+        elif entity == "credit":
+            return f"{original_value[:-4]}{counter % 10000:04d}"
         else:
-            while self.fake_data_index[entity] < len(self.faker_data[entity]):
-                fake_value = self.faker_data[entity][self.fake_data_index[entity]]
-                self.fake_data_index[entity] += 1
-
-                if fake_value not in self.used_fakes[entity]:
-                    self.used_fakes[entity].add(fake_value)
-                    self.forward_mapping[col_key][original_value] = fake_value
-                    self.backward_mapping[col_key][fake_value] = original_value
-                    return fake_value
-
-        raise ValueError(f"No more unique fake values available for entity: {entity}")
+            return f"{original_value}-{counter}"
 
     @time_it
     def anonymize_csv(self, input_csv_path, sensitive_columns, output_csv_path, forward_map_path, backward_map_path):
