@@ -1,11 +1,11 @@
 {
-  "timestamp": "2025-04-22T10:08:56.227615",
+  "timestamp": "2025-04-24T13:28:07.371422",
   "columns_anonymized": [
     "name",
     "domain"
   ],
   "total_entries": {
     "name": 97665,
-    "domain": 82876
+    "domain": 82829
   }
 }

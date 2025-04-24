@@ -157,19 +157,20 @@ masker.anonymize_csv(
     forward_map_path='f_mapping.json',
     backward_map_path='b_mapping.json'
 )
-masker.deanonymize_csv(
-    anonymized_csv_path='anonymized_data.csv',
-    sensitive_columns=sensitive_columns,
-    backward_mapping_path='b_mapping.json',
-    deanonymized_csv_path='deanonymized_data.csv'
-)
-masker.csv_to_sql(
-    csv_path='companies_100k.csv',
-    _db_path='company.db',
-    table_name='companies_100k'
-)
-masker.csv_to_sql(
-    csv_path='anonymized_data.csv',
-    _db_path='company.db',
-    table_name='companies_masked'
-)
+# masker.deanonymize_csv(
+#     anonymized_csv_path='anonymized_data.csv',
+#     sensitive_columns=sensitive_columns,
+#     backward_mapping_path='b_mapping.json',
+#     deanonymized_csv_path='deanonymized_data.csv'
+# )
+# masker.csv_to_sql(
+#     csv_path='companies_100k.csv',
+#     _db_path='company.db',
+#     table_name='companies_100k'
+# )
+# masker.csv_to_sql(
+#     csv_path='anonymized_data.csv',
+
+#     _db_path='company.db',
+#     table_name='companies_masked'
+# )
