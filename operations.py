@@ -7,12 +7,17 @@ from sqlparse.sql import Token
 from sqlparse.tokens import Literal,String
 class DbOperations:
     def __init__(self):
-        self.forward_mapping_path= 'f_mapping.json'
-        self.backward_mapping_path= 'b_mapping.json'
-        with open(self.forward_mapping_path, 'r') as f:
-            self.forward_mapping = json.load(f)
-        with open(self.backward_mapping_path, 'r') as f:
-            self.backward_mapping = json.load(f)
+        self.map_path='new_mapping.json'
+        self.forward_mapping = defaultdict(dict)
+        self.backward_mapping = defaultdict(dict)
+        with open(self.map_path, 'r') as f:
+            data= json.load(f)
+            self.forward_mapping = data.get('forward_mapping', {})
+            self.backward_mapping = data.get('backward_mapping', {})
+        self.entity_column_map={
+        'name': 'company',
+        'domain': 'url',
+        }
     @staticmethod
     def time_it(func):
         def wrapper(*args, **kwargs):
@@ -25,7 +30,7 @@ class DbOperations:
     @time_it
     def mask_sentence(self, sentence):
         flat_map = {}
-        for column, value_map in self.forward_mapping.items():
+        for entity, value_map in self.forward_mapping.items():
             for original, fake in value_map.items():
                 flat_map[original] = fake
         # Pre-lowercased lookup for fast replacement
@@ -60,7 +65,7 @@ class DbOperations:
     @time_it
     def unmask_summary(self, sentence):
         flat_map = {}
-        for column, value_map in self.backward_mapping.items():
+        for entity, value_map in self.backward_mapping.items():
             for original, fake in value_map.items():
                 flat_map[original] = fake
         # Pre-lowercased lookup for fast replacement
@@ -122,26 +127,32 @@ class DbOperations:
 
         return ''.join(masked_query)
     @time_it
-    def query_unmask(self,query,backward_mapping_path):
-        self.backward_mapping_path= backward_mapping_path
-        with open(self.backward_mapping_path, 'r') as f:
-            self.backward_mapping = json.load(f)
+    def query_unmask(self, query):
         parsed = sqlparse.parse(query)
         masked_query = []
+
         for statement in parsed:
-            tokens=list(statement.flatten())
+            tokens = list(statement.flatten())
             for token in tokens:
-                if token.ttype in (String.Single, Literal.String.Single):
-                    value=token.value.strip("'\'")
-                    
-                    replaced=False
-                    for ent in self.backward_mapping.values():
-                        if value in ent:
-                            real_value=ent[value]
-                            token.value=f"'{real_value}'"
-                            replaced=True
-                            break
+                original_value = token.value
+                value = original_value.strip("\"'")  # remove both types of quotes
+                replaced = False
+                for ent in self.backward_mapping.values():
+                    if value in ent:
+                        fake_value = ent[value]
+                        # Determine if the original was single or double quoted
+                        if original_value.startswith("'") and original_value.endswith("'"):
+                            token.value = f"'{fake_value}'"
+                        elif original_value.startswith('"') and original_value.endswith('"'):
+                            token.value = f'"{fake_value}"'
+                        else:
+                            token.value = fake_value
+
+                        replaced = True
+                        break
+
                 masked_query.append(token.value)
+
         return ''.join(masked_query)
 
     @time_it
@@ -150,7 +161,8 @@ class DbOperations:
         for row in results:
             new_row={}
             for col,val in row.items():
-                key=f"{col}"
+                entity= self.entity_column_map.get(col.lower())
+                key=f"{entity}"
                 if key in self.backward_mapping and val in self.backward_mapping[key]:
                     new_row[col]=self.backward_mapping[key][val]
                 else:
@@ -164,7 +176,8 @@ class DbOperations:
         for row in results:
             new_row={}
             for col,val in row.items():
-                key=f"{col}"
+                entity= self.entity_column_map.get(col.lower())
+                key=f"{entity}"
                 if key in self.forward_mapping and val in self.forward_mapping[key]:
                     new_row[col]=self.forward_mapping[key][val]
                 else:
@@ -175,19 +188,20 @@ class DbOperations:
 # Example usage
 op = DbOperations()
 sentence = 'name is ibm and inc and domain is ibm.com'
-summary= 'name is Brooks and Sons Consulting Ltd. and its domain is https://harding.mcmahon.co'
+summary= 'name is Williams-Waller Co and Hall-Parker Corporation and domain is https://ramsey.hill.co'
 
-query= "SELECT * FROM employees WHERE name= infosys and domain= infosys.com"
+query= "SELECT * FROM employees WHERE name= infosys and domain= 'infosys.com'"
 
-m_qury='SELECT * FROM employees WHERE name=Vazquez, Evans and Johnson Services Corporation and domain=https://carpenter.newman.co'
-aa="[{'id': 1454663, 'name': 'infosys', 'domain': 'infosys.com', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'pwd', 'domain': 'pwwwd.com', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]"
-zz=' "infosys.com"  {{infosys}}    [infosys]    **infosys**   (infosys) "infosys" '
-abc="infosys  {{infosys}}"
-# masked_sentence = op.mask_sentence(aa)
-# print("masked sentence:", masked_sentence)
-# unmasked_sentence = op.unmask_summary(summary)
-# print("unmasked summary:", unmasked_sentence)
+m_qury="SELECT * FROM employees WHERE name= Cox-Holloway International and domain= 'https://scott-smith.gamble-nelson.co'"
+aa=[{'id': 1454663, 'name': 'infosys', 'domain': 'infosys.com', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'pwd', 'domain': 'pwwwd.com', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
+# zz=' "infosys.com"  {{infosys}}    [infosys]    **infosys**   (infosys) "infosys" '
+# abc="infosys  {{infosys}}"
+masked_res=[{'id': 1454663, 'name': 'Cox-Holloway International', 'domain': 'https://scott-smith.gamble-nelson.co', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'Galloway-Scott LLC', 'domain': 'https://davis.graham.co', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
+masked_sentence = op.mask_sentence(sentence)
+print("masked sentence:", masked_sentence)
+unmasked_sentence = op.unmask_summary(summary)
+print("unmasked summary:", unmasked_sentence)
 masked_query = op.query_mask(query)
 print("masked query:", masked_query)
-# unmasked_query = op.query_unmask(m_qury,'b_mapping.json')
-# print("unmasked query:", unmasked_query)
+print(op.masking_results(aa))
+print("unmasked result: ",op.unmasking_results(masked_res))

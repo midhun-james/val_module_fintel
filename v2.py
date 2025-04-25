@@ -14,14 +14,22 @@ import re
 import string
 class DataMaskerCSV:
     def __init__(self):
+        # self.entity_column_map={
+        #                 'names': 'names',
+        #                 'emails': 'emails',
+        #                 'phone': 'phone',
+        #                 'credit': 'credit',
+        #                 'url': 'url',
+        #                 'location': 'location',
+        #                 'company': 'company',
+        #             }
         self.entity_column_map={
-            'name': 'company',
-            'domain': 'url',
-            'locality': 'location',
-            'country': 'country',
-            'linkedin url': 'url',
-        }
-        self.faker_data_path= 'faker_data_v2.json.gz'
+                'name': 'company',
+                'domain': 'url',
+                }
+        self.sensitive_columns =self.entity_column_map.keys()
+
+        self.faker_data_path= 'faker_dataset_v3.json.gz'
         with gzip.open(self.faker_data_path, 'rt',encoding='utf-8') as f:
             faker_list = json.load(f)
         self.faker_data = {}
@@ -30,7 +38,9 @@ class DataMaskerCSV:
         self.domain_pool= self.faker_data['url']
         self.forward_mapping = defaultdict(dict)
         self.backward_mapping = defaultdict(dict)
+        self.mapping= defaultdict(dict)
         self.fake_data_index = defaultdict(int)
+
         self.used_fakes = defaultdict(set)
         self.used_urls = set()
         self.url_extensions =  [
@@ -58,9 +68,9 @@ class DataMaskerCSV:
         return wrapper
 
 
-    def _get_fake_value(self, entity, original_value, column_name=None):
+    def _get_fake_value(self, entity, original_value):
         """Return consistent fake value for an original value."""
-        col_key = column_name or entity  # default fallback if column not passed
+        col_key =  entity  # default fallback if column not passed
 
 
         if original_value in self.forward_mapping[col_key]:
@@ -89,20 +99,23 @@ class DataMaskerCSV:
         counter=1
         base_fake_value=original_value
         while True:
-            fallback_value= self.modify_fake_value(entity, base_fake_value, column_name=column_name, counter=counter)
+            fallback_value= self.modify_fake_value(entity, base_fake_value,  counter=counter)
             if fallback_value not in self.used_fakes[entity]:
                 self.used_fakes[entity].add(fallback_value)
                 self.forward_mapping[col_key][original_value] = fallback_value
                 self.backward_mapping[col_key][fallback_value] = original_value
+                return fallback_value
             counter+=1
 
         
-    def modify_fake_value(self,entity,original_value,column_name=None,counter=1):
+    def modify_fake_value(self,entity,original_value,counter=1):
         """Modify the fake value to ensure uniqueness."""
-        if entity=="name":
-            return original_value+f"{string.ascii_lowercase[counter % 26]}"
-        elif entity=="email":
-            name,domain=original_value.split('@')
+        if entity=="names":
+            base=random.choice(self.faker_data['names'])
+            return base+f"{string.ascii_lowercase[counter % 26]}"
+        elif entity=="emails":
+            base=random.choice(self.faker_data['emails'])
+            name,domain=base.split('@')
             return f"{name}{counter}@{domain}"
         elif entity=="url":
             fake_value=original_value
@@ -113,19 +126,37 @@ class DataMaskerCSV:
             self.used_urls.add(fake_value)
             return fake_value
         elif entity=="phone":
-            return f"{original_value[:-2]}{counter % 100:02d}"
+            base=random.choice(self.faker_data['phone'])
+            return f"{base[:-2]}{counter % 100:02d}"
         elif entity == "company":
-            return f"{original_value} Group {counter % 100_000_000 + 1}"
+            base=random.choice(self.faker_data['company'])
+            return f"{base} Group {counter % 100_000_000 + 1}"
         elif entity == "credit":
             return f"{original_value[:-4]}{counter % 10000:04d}"
         else:
             return f"{original_value}-{counter}"
+    def extract_csv_from_xlsx(self,xlsx_path,sensitive_columns,sheet_name=None,output_csv_path=None):
+        all_data={col:[] for col in sensitive_columns}
+        excel_sheets=pd.read_excel(xlsx_path,sheet_name=None)
+        for sheet_name,df in excel_sheets.items():
+            for col in sensitive_columns:
+                if col in df.columns:
+                    values=df[col].dropna().tolist()
+                    all_data[col].extend(values)
+                else:
+                    all_data[col].extend([None]*len(df))
+        max_len=max([len(v) for v in all_data.values()])
+        for col in all_data:
+            all_data[col].extend([None]*(max_len-len(all_data[col])))
+        final_df=pd.DataFrame(all_data)
+        final_df.to_csv(output_csv_path,index=False)
+        print(f"Extracted data from {xlsx_path} and saved to {output_csv_path}")
 
     @time_it
-    def anonymize_csv(self, input_csv_path, sensitive_columns, output_csv_path, forward_map_path, backward_map_path):
+    def anonymize_csv(self, input_csv_path, output_csv_path,map_path):
         df = pd.read_csv(input_csv_path)
 
-        for column in sensitive_columns:
+        for column in self.sensitive_columns:
             if column not in df.columns:
                 print(f"Warning: Column '{column}' not found in CSV.")
                 continue
@@ -135,44 +166,45 @@ class DataMaskerCSV:
                 print(f"Warning: No fake data available for entity type '{entity}' from column '{column}'.")
                 continue
 
-            df[column] = df[column].apply(lambda val: self._get_fake_value(entity, val, column_name=column) if pd.notna(val) else val)
+            df[column] = df[column].apply(lambda val: self._get_fake_value(entity, val) if pd.notna(val) else val)
 
 
-        df.to_csv(output_csv_path, index=False)
+        # df.to_csv(output_csv_path, index=False)
 
-        with open(forward_map_path, 'w') as f:
-            json.dump(self.forward_mapping, f, indent=2)
-
-        with open(backward_map_path, 'w') as f:
-            json.dump(self.backward_mapping, f, indent=2)
-        
-        metadata = {
-            "timestamp": datetime.now().isoformat(),
-            "columns_anonymized": list(self.forward_mapping.keys()),
-            "total_entries": {
-                col: len(self.forward_mapping[col]) for col in self.forward_mapping
+        combined_mapping = {
+            "forward_mapping": self.forward_mapping,
+            "backward_mapping": self.backward_mapping,
+            "metadata": {
+                "timestamp": datetime.now().isoformat(),
+                "columns_anonymized": list(self.forward_mapping.keys()),
+                "total_entries": {
+                    col: len(self.forward_mapping[col]) for col in self.forward_mapping
+                }
             }
         }
 
-        with open("anonymization_metadata.json", 'w') as f:
-            json.dump(metadata, f, indent=2)
+        with open(map_path, 'w') as f: 
+            json.dump(combined_mapping, f, indent=2)
 
-        print(f"Anonymized CSV saved to: {output_csv_path}")
-        print(f"Forward mapping saved to: {forward_map_path}")
-        print(f"Backward mapping saved to: {backward_map_path}")
+
+        # print(f"Anonymized CSV saved to: {output_csv_path}")
+        print(f" mapping saved to: {map_path}")
+  
     
     @time_it
-    def deanonymize_csv(self,anonymized_csv_path,sensitive_columns,backward_mapping_path,deanonymized_csv_path):
+    def deanonymize_csv(self,anonymized_csv_path,map_path,deanonymized_csv_path):
         df = pd.read_csv(anonymized_csv_path)
 
-        with open(backward_mapping_path, 'r') as f:
-            self.backward_mapping = json.load(f)
-        for col in sensitive_columns:
+        with open(map_path, 'r') as f:
+            self.backward_mapping = json.load(f).get("backward_mapping", {})
+        
+        for col in self.sensitive_columns:
+            entity= self.entity_column_map.get(col.lower())
             if col not in df.columns:
                 continue
-            backward_map = self.backward_mapping.get(col, {})
+            backward_map = self.backward_mapping.get(entity, {})
 
-            df[col]=df[col].apply(lambda val:backward_map.get(val,val) if pd.notna(val) else val )
+            df[col]=df[col].apply(lambda val:backward_map.get(val,entity) if pd.notna(val) else val )
         df.to_csv(deanonymized_csv_path,index=False)
         print(f"Deanonymized CSV saved to: {deanonymized_csv_path}")
     @time_it
@@ -186,38 +218,50 @@ class DataMaskerCSV:
             print(f"❌ Failed to import CSV: {e}")
     
 entity_column_map = {
-    'name': 'company',
-    'domain': 'url',
-    'locality': 'location',
-    'country': 'country',
-    'linkedin url': 'url',
+    'names': 'names',
+    'emails': 'emails',
+    'phone': 'phone',
+    'credit': 'credit',
+    'url': 'url',
+    'location': 'location',
+    'company': 'company',
 }
 
-sensitive_columns = ['name', 'domain',]
-faker_data_path = 'faker_data_v2.json.gz'
+
+
 
 masker = DataMaskerCSV()
 
+# masker.anonymize_csv(
+#     input_csv_path='for_colab_test.csv',
+#     sensitive_columns=sensitive_columns,
+#     output_csv_path='an_test.csv',
+#     forward_map_path='ftest_mapping.json',
+#     backward_map_path='btest_mapping.json'
+# )
+
+# 
+# masker.csv_to_sql(
+#     csv_path='.csv',
+#     _db_path='mod.db',
+#     table_name='companies_100k'
+# )
+# masker.csv_to_sql(
+#     csv_path='anonymized_data.csv',
+#     _db_path='company.db',
+#     table_name='companies_masked'
+# )
+# masker.extract_csv_from_xlsx(
+#     xlsx_path='Book1.xlsx',
+#     sensitive_columns=sensitive_columns,
+#     output_csv_path='xlscsv.csv'
+# )
 masker.anonymize_csv(
     input_csv_path='companies_100k.csv',
-    sensitive_columns=sensitive_columns,
-    output_csv_path='anonymized_data.csv',
-    forward_map_path='f_mapping.json',
-    backward_map_path='b_mapping.json'
+    output_csv_path='new.csv',
+    map_path='new_mapping.json',
 )
-masker.deanonymize_csv(
-    anonymized_csv_path='anonymized_data.csv',
-    sensitive_columns=sensitive_columns,
-    backward_mapping_path='b_mapping.json',
-    deanonymized_csv_path='deanonymized_data.csv'
-)
-masker.csv_to_sql(
-    csv_path='companies_100k.csv',
-    _db_path='company.db',
-    table_name='companies_100k'
-)
-masker.csv_to_sql(
-    csv_path='anonymized_data.csv',
-    _db_path='company.db',
-    table_name='companies_masked'
-)
+# masker.deanonymize_csv(
+#     anonymized_csv_path='new.csv',
+#     map_path='new_mapping.json',
+#     deanonymized_csv_path='deanonymized_data.csv')
