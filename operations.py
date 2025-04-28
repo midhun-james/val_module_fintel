@@ -56,7 +56,7 @@ class DbOperations:
                 suffix = match.group(3)  # e.g., '}' or '**'
 
                 replaced = flat_map_lower.get(core.lower(), core)
-                print(f'{match.group(0)} => {prefix}{replaced}{suffix}')
+                # print(f'{match.group(0)} => {prefix}{replaced}{suffix}')
                 return f"{prefix}{replaced}{suffix}"
             sentence = pattern.sub(replace_match, sentence)
 
@@ -91,7 +91,7 @@ class DbOperations:
                 suffix = match.group(3)  # e.g., '}' or '**'
 
                 replaced = flat_map_lower.get(core.lower(), core)
-                print(f'{match.group(0)} => {prefix}{replaced}{suffix}')
+                # print(f'{match.group(0)} => {prefix}{replaced}{suffix}')
                 return f"{prefix}{replaced}{suffix}"
 
             sentence = pattern.sub(replace_match, sentence)
@@ -188,20 +188,22 @@ class DbOperations:
 # Example usage
 op = DbOperations()
 sentence = 'name is ibm and inc and domain is ibm.com'
-summary= 'name is Williams-Waller Co and Hall-Parker Corporation and domain is https://ramsey.hill.co'
+summary= 'name is Williams-Waller Co and Hall-Parker Corporation and domain is https://butler-reed.reid.co'
 
 query= "SELECT * FROM employees WHERE name= infosys and domain= 'infosys.com'"
 
-m_qury="SELECT * FROM employees WHERE name= Cox-Holloway International and domain= 'https://scott-smith.gamble-nelson.co'"
+m_qury="SELECT * FROM employees WHERE name= 'Cox-Holloway International' and domain= 'https://chapman-kim.sanchez.co'"
 aa=[{'id': 1454663, 'name': 'infosys', 'domain': 'infosys.com', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'pwd', 'domain': 'pwwwd.com', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
 # zz=' "infosys.com"  {{infosys}}    [infosys]    **infosys**   (infosys) "infosys" '
 # abc="infosys  {{infosys}}"
 masked_res=[{'id': 1454663, 'name': 'Cox-Holloway International', 'domain': 'https://scott-smith.gamble-nelson.co', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'Galloway-Scott LLC', 'domain': 'https://davis.graham.co', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
-masked_sentence = op.mask_sentence(sentence)
-print("masked sentence:", masked_sentence)
-unmasked_sentence = op.unmask_summary(summary)
-print("unmasked summary:", unmasked_sentence)
+# masked_sentence = op.mask_sentence(sentence)
+# print("masked sentence:", masked_sentence)
+# unmasked_sentence = op.unmask_summary(summary)
+# print("unmasked summary:", unmasked_sentence)
 masked_query = op.query_mask(query)
 print("masked query:", masked_query)
-print(op.masking_results(aa))
-print("unmasked result: ",op.unmasking_results(masked_res))
+unmasked_query= op.query_unmask(m_qury)
+print("unmasked query:", unmasked_query)
+# print(op.masking_results(aa))
+# print("unmasked result: ",op.unmasking_results(masked_res))
