@@ -161,6 +161,29 @@ class DataMaskerCSV:
         final_df=pd.DataFrame(all_data)
         final_df.to_csv(output_csv_path,index=False)
         print(f"Extracted data from {xlsx_path} and saved to {output_csv_path}")
+    def csv_extraction(self,csv_path,output_csv_path):
+        all_data={}
+        for col in self.sensitive_columns:
+            entity=self.entity_column_map.get(col)
+            if entity:
+                all_data.setdefault(entity, [])
+        df=pd.read_csv(csv_path)
+        for col in self.sensitive_columns:
+            if col in df.columns:
+                entity=self.entity_column_map.get(col)
+                if entity:
+                    values=df[col].dropna().to_list()
+                    all_data[entity].extend(values)
+                else:
+                    entity=self.entity_column_map.get(col.lower())
+                    if entity:
+                        all_data[entity].extend([None]*len(df))
+        max_len=max([len(v) for v in all_data.values()])
+        for entity in all_data:
+            all_data[entity].extend([None]*(max_len-len(all_data[entity])))
+        final_df=pd.DataFrame(all_data)
+        final_df.to_csv(output_csv_path,index=False)
+            
 
     @time_it
     def anonymize_csv(self, input_csv_path, output_csv_path,map_path):
@@ -261,6 +284,10 @@ masker = DataMaskerCSV()
 #     xlsx_path='companies.xlsx',
 #     output_csv_path='new_csv.csv'
 # )
+masker.csv_extraction(
+    csv_path='companies_100k.csv',
+    output_csv_path='new_csv.csv'
+)
 masker.anonymize_csv(
     input_csv_path='new_csv.csv',
     output_csv_path='log.csv',
