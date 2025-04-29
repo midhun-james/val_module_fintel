@@ -198,7 +198,7 @@ class DataMaskerCSV:
             df[entity] = df[entity].apply(lambda val: self._get_fake_value(entity, val) if pd.notna(val) else val)
 
 
-        # df.to_csv(output_csv_path, index=False)
+        df.to_csv(output_csv_path, index=False)
 
         combined_mapping = {
             "forward_mapping": self.forward_mapping,
@@ -284,16 +284,16 @@ masker = DataMaskerCSV()
 #     xlsx_path='companies.xlsx',
 #     output_csv_path='new_csv.csv'
 # )
-masker.csv_extraction(
-    csv_path='companies_100k.csv',
-    output_csv_path='new_csv.csv'
-)
+# masker.csv_extraction(
+#     csv_path='companies_100k.csv',
+#     output_csv_path='new_csv.csv'
+# )
 masker.anonymize_csv(
     input_csv_path='new_csv.csv',
     output_csv_path='log.csv',
     map_path='new_mapping.json',)
 
-# masker.deanonymize_csv(
-#     anonymized_csv_path='new.csv',
-#     map_path='new_mapping.json',
-#     deanonymized_csv_path='deanonymized_data.csv')
+masker.deanonymize_csv(
+    anonymized_csv_path='new_csv.csv',
+    map_path='new_mapping.json',
+    deanonymized_csv_path='deanonymized_data.csv')
