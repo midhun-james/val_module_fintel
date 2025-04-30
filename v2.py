@@ -12,6 +12,8 @@ from datetime import datetime
 import random
 import re
 import string
+import polars as pl
+from openpyxl import load_workbook
 class DataMaskerCSV:
     def __init__(self):
         # self.entity_column_map={
@@ -26,8 +28,7 @@ class DataMaskerCSV:
         self.entity_column_map={
                 'name': 'company',
                 'domain': 'url',
-                # 'company': 'company',
-                # 'manager': 'names',
+                'locality': 'location',
                 }
         self.sensitive_columns = self.entity_column_map.keys()
         self.faker_data_path= 'faker_dataset_v3.json.gz'
@@ -68,6 +69,37 @@ class DataMaskerCSV:
             return result
         return wrapper
 
+    @time_it 
+    def csv_extraction(self,file_path,output_csv_path):
+        if file_path.endswith('.xlsx'):
+            sheet_names = pd.ExcelFile(file_path).sheet_names
+            df=pl.read_excel(file_path,engine='calamine',sheet_name=sheet_names)
+            combined_df = pl.concat(df.values(), how="diagonal")
+            combined_df.write_csv('intermediate.csv')
+            file_path='intermediate.csv'
+
+        all_data={}
+        for col in self.sensitive_columns:
+            entity=self.entity_column_map.get(col)
+            if entity:
+                all_data.setdefault(entity, [])
+        df=pd.read_csv(file_path)
+        for col in self.sensitive_columns:
+            if col in df.columns:
+                entity=self.entity_column_map.get(col)
+                if entity:
+                    values=df[col].dropna().to_list()
+                    all_data[entity].extend(values)
+                else:
+                    entity=self.entity_column_map.get(col.lower())
+                    if entity:
+                        all_data[entity].extend([None]*len(df))
+        max_len=max([len(v) for v in all_data.values()])
+        for entity in all_data:
+            all_data[entity].extend([None]*(max_len-len(all_data[entity])))
+        final_df=pd.DataFrame(all_data)
+        final_df.to_csv(output_csv_path,index=False)
+            
 
     def _get_fake_value(self, entity, original_value):
         """Return consistent fake value for an original value."""
@@ -136,54 +168,6 @@ class DataMaskerCSV:
             return f"{original_value[:-4]}{counter % 10000:04d}"
         else:
             return f"{original_value}-{counter}"
-    @time_it
-    def extract_csv_from_xlsx(self,xlsx_path,sheet_name=None,output_csv_path=None):
-        all_data={}
-        for col in self.sensitive_columns:
-            entity= self.entity_column_map.get(col)
-            if entity:
-                all_data.setdefault(entity, [])
-        excel_sheets=pd.read_excel(xlsx_path,sheet_name=None)
-        for sheet_name,df in excel_sheets.items():
-            for col in self.sensitive_columns:
-                if col in df.columns:
-                    entity=self.entity_column_map.get(col)
-                    if entity:
-                        values=df[col].dropna().tolist()
-                        all_data[entity].extend(values)
-                    else:
-                        entity=self.entity_column_map.get(col.lower())
-                        if entity:
-                            all_data[entity].extend([None]*len(df))
-        max_len=max([len(v) for v in all_data.values()])
-        for entity in all_data:
-            all_data[entity].extend([None]*(max_len-len(all_data[entity])))
-        final_df=pd.DataFrame(all_data)
-        final_df.to_csv(output_csv_path,index=False)
-        print(f"Extracted data from {xlsx_path} and saved to {output_csv_path}")
-    def csv_extraction(self,csv_path,output_csv_path):
-        all_data={}
-        for col in self.sensitive_columns:
-            entity=self.entity_column_map.get(col)
-            if entity:
-                all_data.setdefault(entity, [])
-        df=pd.read_csv(csv_path)
-        for col in self.sensitive_columns:
-            if col in df.columns:
-                entity=self.entity_column_map.get(col)
-                if entity:
-                    values=df[col].dropna().to_list()
-                    all_data[entity].extend(values)
-                else:
-                    entity=self.entity_column_map.get(col.lower())
-                    if entity:
-                        all_data[entity].extend([None]*len(df))
-        max_len=max([len(v) for v in all_data.values()])
-        for entity in all_data:
-            all_data[entity].extend([None]*(max_len-len(all_data[entity])))
-        final_df=pd.DataFrame(all_data)
-        final_df.to_csv(output_csv_path,index=False)
-            
 
     @time_it
     def anonymize_csv(self, input_csv_path, output_csv_path,map_path):
@@ -245,55 +229,10 @@ class DataMaskerCSV:
             conn.close()
         except Exception as e:
             print(f"❌ Failed to import CSV: {e}")
-    
-entity_column_map = {
-    'names': 'names',
-    'emails': 'emails',
-    'phone': 'phone',
-    'credit': 'credit',
-    'url': 'url',
-    'location': 'location',
-    'company': 'company',
-}
-
-
-
-
 masker = DataMaskerCSV()
+masker.csv_extraction('companies.xlsx','new_csv.csv')
+masker.anonymize_csv('new_csv.csv','masked.csv','mapping.json')
 
-# masker.anonymize_csv(
-#     input_csv_path='for_colab_test.csv',
-#     sensitive_columns=sensitive_columns,
-#     output_csv_path='an_test.csv',
-#     forward_map_path='ftest_mapping.json',
-#     backward_map_path='btest_mapping.json'
-# )
 
-# 
-# masker.csv_to_sql(
-#     csv_path='.csv',
-#     _db_path='mod.db',
-#     table_name='companies_100k'
-# )
-# masker.csv_to_sql(
-#     csv_path='anonymized_data.csv',
-#     _db_path='company.db',
-#     table_name='companies_masked'
-# )
-# masker.extract_csv_from_xlsx(
-#     xlsx_path='companies.xlsx',
-#     output_csv_path='new_csv.csv'
-# )
-# masker.csv_extraction(
-#     csv_path='companies_100k.csv',
-#     output_csv_path='new_csv.csv'
-# )
-masker.anonymize_csv(
-    input_csv_path='new_csv.csv',
-    output_csv_path='log.csv',
-    map_path='new_mapping.json',)
 
-masker.deanonymize_csv(
-    anonymized_csv_path='new_csv.csv',
-    map_path='new_mapping.json',
-    deanonymized_csv_path='deanonymized_data.csv')
+

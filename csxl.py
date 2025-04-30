@@ -1,10 +1,11 @@
 import pandas as pd
+import time
 # import openpyxl
 # df=pd.read_csv('companies_100k.csv')
 # df.to_excel('companies.xlsx', index=False)
 def are_csvs_similar(csv_path1, csv_path2, ignore_index=True, ignore_column_order=False):
     df1 = pd.read_csv('new_csv.csv')
-    df2 = pd.read_csv('deanonymized_data.csv')
+    df2 = pd.read_csv('sample_csv.csv')
 
     # Optionally ignore index
     if ignore_index:
@@ -28,9 +29,16 @@ def are_csvs_similar(csv_path1, csv_path2, ignore_index=True, ignore_column_orde
     return comparison
 
 csv1 = 'new_csv.csv'
-csv2 = 'deanonymized_data.csv'
+csv2 = 'sample_csv.csv'
 
 if are_csvs_similar(csv1, csv2, ignore_index=True, ignore_column_order=True):
     print("✅ The CSV files are similar.")
 else:
     print("❌ The CSV files are different.")
+
+import openpyxl
+import polars as pl
+
+df=pl.read_excel('companies.xlsx',engine='calamine')
+
+df.write_csv('sample.csv')
