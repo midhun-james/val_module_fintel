@@ -15,7 +15,7 @@ import string
 import polars as pl
 from openpyxl import load_workbook
 class DataMaskerCSV:
-    def __init__(self):
+    def __init__(self,file_path):
         # self.entity_column_map={
         #                 'names': 'names',
         #                 'emails': 'emails',
@@ -25,15 +25,22 @@ class DataMaskerCSV:
         #                 'location': 'location',
         #                 'company': 'company',
         #             }
+        self.file_path=file_path
+        self.base_name=os.path.splitext(os.path.basename(self.file_path))[0]
+        self.output_dir=self.base_name
+        os.makedirs(self.output_dir, exist_ok=True)
         self.entity_column_map={
                 'name': 'company',
                 'domain': 'url',
                 'locality': 'location',
                 }
         self.sensitive_columns = self.entity_column_map.keys()
+        start=time.time()
         self.faker_data_path= 'faker_dataset_v3.json.gz'
         with gzip.open(self.faker_data_path, 'rt',encoding='utf-8') as f:
             faker_list = json.load(f)
+        end=time.time()
+        print(f"⏳ Faker data loaded in {end-start:.6f} seconds")
         self.faker_data = {}
         for d in faker_list:
             self.faker_data.update(d)
@@ -70,21 +77,22 @@ class DataMaskerCSV:
         return wrapper
 
     @time_it 
-    def csv_extraction(self,file_path):
-        output_csv_path=f'new_{file_path.split(".")[0]}.csv'
-        if file_path.endswith('.xlsx'):
-            sheet_names = pd.ExcelFile(file_path).sheet_names
-            df=pl.read_excel(file_path,engine='calamine',sheet_name=sheet_names)
+    def csv_extraction(self):
+        
+        output_csv_path=os.path.join(self.output_dir,f'new_{self.base_name}.csv')
+        if self.file_path.endswith('.xlsx'):
+            sheet_names = pd.ExcelFile(self.file_path).sheet_names
+            df=pl.read_excel(self.file_path,engine='calamine',sheet_name=sheet_names)
             combined_df = pl.concat(df.values(), how="diagonal")
             combined_df.write_csv('intermediate.csv')
-            file_path='intermediate.csv'
+            self.file_path='intermediate.csv'
 
         all_data={}
         for col in self.sensitive_columns:
             entity=self.entity_column_map.get(col)
             if entity:
                 all_data.setdefault(entity, [])
-        df=pd.read_csv(file_path)
+        df=pd.read_csv(self.file_path)
         for col in self.sensitive_columns:
             if col in df.columns:
                 entity=self.entity_column_map.get(col)
@@ -101,7 +109,7 @@ class DataMaskerCSV:
         final_df=pd.DataFrame(all_data)
         final_df.to_csv(output_csv_path,index=False)
 
-        if file_path == 'intermediate.csv': os.remove(file_path)
+        if self.file_path == 'intermediate.csv': os.remove(self.file_path)
         self.anonymize_csv(output_csv_path)
     
     def _get_fake_value(self, entity, original_value):
@@ -174,9 +182,7 @@ class DataMaskerCSV:
 
     @time_it
     def anonymize_csv(self, input_csv_path):
-
         df = pd.read_csv(input_csv_path)
-
         for entity in df.columns:
 
             if entity not in self.faker_data:
@@ -185,7 +191,7 @@ class DataMaskerCSV:
 
             df[entity] = df[entity].apply(lambda val: self._get_fake_value(entity, val) if pd.notna(val) else val)
 
-        output_csv_path=f'{file_path.split(".")[0]}_masked.csv'
+        output_csv_path=os.path.join(self.output_dir,f'{self.base_name}_masked.csv')
         df.to_csv(output_csv_path, index=False)
 
         combined_mapping = {
@@ -199,7 +205,7 @@ class DataMaskerCSV:
             "forward_mapping": self.forward_mapping,
             "backward_mapping": self.backward_mapping,
         }
-        map_path = f'{file_path.split('.')[0]}_mapping.json'
+        map_path =f'{self.base_name}_mapping.json'
         with open(map_path, 'w') as f: 
             json.dump(combined_mapping, f, indent=2)
 
@@ -234,6 +240,6 @@ class DataMaskerCSV:
         except Exception as e:
             print(f"❌ Failed to import CSV: {e}")
 
-masker = DataMaskerCSV()
 file_path = 'companies_100k.csv'
-masker.csv_extraction(file_path)
+masker = DataMaskerCSV(file_path)
+masker.csv_extraction()
