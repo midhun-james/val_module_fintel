@@ -70,7 +70,8 @@ class DataMaskerCSV:
         return wrapper
 
     @time_it 
-    def csv_extraction(self,file_path,output_csv_path):
+    def csv_extraction(self,file_path):
+        output_csv_path=f'new_{file_path.split(".")[0]}.csv'
         if file_path.endswith('.xlsx'):
             sheet_names = pd.ExcelFile(file_path).sheet_names
             df=pl.read_excel(file_path,engine='calamine',sheet_name=sheet_names)
@@ -99,8 +100,10 @@ class DataMaskerCSV:
             all_data[entity].extend([None]*(max_len-len(all_data[entity])))
         final_df=pd.DataFrame(all_data)
         final_df.to_csv(output_csv_path,index=False)
-            
 
+        if file_path == 'intermediate.csv': os.remove(file_path)
+        self.anonymize_csv(output_csv_path)
+    
     def _get_fake_value(self, entity, original_value):
         """Return consistent fake value for an original value."""
         col_key =  entity  # default fallback if column not passed
@@ -170,7 +173,8 @@ class DataMaskerCSV:
             return f"{original_value}-{counter}"
 
     @time_it
-    def anonymize_csv(self, input_csv_path, output_csv_path,map_path):
+    def anonymize_csv(self, input_csv_path):
+
         df = pd.read_csv(input_csv_path)
 
         for entity in df.columns:
@@ -181,21 +185,21 @@ class DataMaskerCSV:
 
             df[entity] = df[entity].apply(lambda val: self._get_fake_value(entity, val) if pd.notna(val) else val)
 
-
+        output_csv_path=f'{file_path.split(".")[0]}_masked.csv'
         df.to_csv(output_csv_path, index=False)
 
         combined_mapping = {
-            "forward_mapping": self.forward_mapping,
-            "backward_mapping": self.backward_mapping,
             "metadata": {
                 "timestamp": datetime.now().isoformat(),
                 "columns_anonymized": list(self.forward_mapping.keys()),
                 "total_entries": {
                     col: len(self.forward_mapping[col]) for col in self.forward_mapping
                 }
-            }
+            },
+            "forward_mapping": self.forward_mapping,
+            "backward_mapping": self.backward_mapping,
         }
-
+        map_path = f'{file_path.split('.')[0]}_mapping.json'
         with open(map_path, 'w') as f: 
             json.dump(combined_mapping, f, indent=2)
 
@@ -229,10 +233,7 @@ class DataMaskerCSV:
             conn.close()
         except Exception as e:
             print(f"❌ Failed to import CSV: {e}")
+
 masker = DataMaskerCSV()
-masker.csv_extraction('companies.xlsx','new_csv.csv')
-masker.anonymize_csv('new_csv.csv','masked.csv','mapping.json')
-
-
-
-
+file_path = 'companies_100k.csv'
+masker.csv_extraction(file_path)
