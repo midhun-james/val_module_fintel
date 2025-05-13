@@ -5,11 +5,14 @@ from collections import defaultdict
 import sqlparse
 from sqlparse.sql import Token
 from sqlparse.tokens import Literal,String
+from gliner import GLiNER
+from rapidfuzz import process, fuzz
 class DbOperations:
     def __init__(self):
         self.map_path='new_mapping.json'
         self.forward_mapping = defaultdict(dict)
         self.backward_mapping = defaultdict(dict)
+        self.model=GLiNER.from_pretrained("urchade/gliner_base")
         with open(self.map_path, 'r') as f:
             data= json.load(f)
             self.forward_mapping = data.get('forward_mapping', {})
@@ -29,6 +32,8 @@ class DbOperations:
         return wrapper
     @time_it
     def mask_sentence(self, sentence):
+        entities=self.find_and_correct_entities(sentence)
+        sentence= self.replace_entities_in_text(sentence,entities)
         flat_map = {}
         for entity, value_map in self.forward_mapping.items():
             for original, fake in value_map.items():
@@ -184,26 +189,62 @@ class DbOperations:
                     new_row[col]=val
             de_anonymized.append(new_row)
         return de_anonymized
+    @time_it
+    def correct_word(self,word,threshold=65):
+      valid_list=[company.lower() for company in self.forward_mapping['company'].keys()]
+      match=process.extractOne(word,valid_list,scorer=fuzz.ratio)
+      return match[0] if match and match[1]>=threshold else word
+    @time_it
+    def find_and_correct_entities(self,text):
+      valid_company=[company.lower() for company in self.forward_mapping['company'].keys()]
+      entities=self.model.predict_entities(text,labels=["person","organization"])
+      
+      corrected_entities=[]
+      for ent in entities:
+        entity_text=ent['text']
+        start=ent['start']
+        end=ent['end']
+        label=ent['label']
+        if label=="organization":
+          corrected = self.correct_word(entity_text)
+        else: corrected=entity_text
+        corrected_entities.append({
+          'original':entity_text,
+          'corrected':corrected,
+          'start':start,
+          'end':end,
+          'label':label
+        })
+      return corrected_entities
+    
+    @time_it
+    def replace_entities_in_text(self,text,entities):
+      entities=sorted(entities,key=lambda x:x['start'], reverse=True)
+      for ent in entities: 
+        text= text[:ent['start']] + ent['corrected'] + text[ent['end']:]
+      return text
     
 # Example usage
-op = DbOperations()
-sentence = 'name is ibm and inc and domain is ibm.com'
-summary= 'name is Williams-Waller Co and Hall-Parker Corporation and domain is https://butler-reed.reid.co'
+def main():
 
-query= "SELECT * FROM employees WHERE name= infosys and domain= 'infosys.com'"
+    op = DbOperations()
+    sentence = 'name is ibm and inc and domain is ibm.com'
+    summary= 'name is Williams-Waller Co and Hall-Parker Corporation and domain is https://butler-reed.reid.co'
 
-m_qury="SELECT * FROM employees WHERE name= 'Cox-Holloway International' and domain= 'https://chapman-kim.sanchez.co'"
-aa=[{'id': 1454663, 'name': 'infosys', 'domain': 'infosys.com', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'pwd', 'domain': 'pwwwd.com', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
-# zz=' "infosys.com"  {{infosys}}    [infosys]    **infosys**   (infosys) "infosys" '
-# abc="infosys  {{infosys}}"
-masked_res=[{'id': 1454663, 'name': 'Cox-Holloway International', 'domain': 'https://scott-smith.gamble-nelson.co', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'Galloway-Scott LLC', 'domain': 'https://davis.graham.co', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
-# masked_sentence = op.mask_sentence(sentence)
-# print("masked sentence:", masked_sentence)
-# unmasked_sentence = op.unmask_summary(summary)
-# print("unmasked summary:", unmasked_sentence)
-masked_query = op.query_mask(query)
-print("masked query:", masked_query)
-unmasked_query= op.query_unmask(m_qury)
-print("unmasked query:", unmasked_query)
-# print(op.masking_results(aa))
-# print("unmasked result: ",op.unmasking_results(masked_res))
+    query= "SELECT * FROM employees WHERE name= infosys and domain= 'infosys.com'"
+
+    m_qury="SELECT * FROM employees WHERE name= 'Cox-Holloway International' and domain= 'https://chapman-kim.sanchez.co'"
+    aa=[{'id': 1454663, 'name': 'infosys', 'domain': 'infosys.com', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'pwd', 'domain': 'pwwwd.com', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
+    # zz=' "infosys.com"  {{infosys}}    [infosys]    **infosys**   (infosys) "infosys" '
+    # abc="infosys  {{infosys}}"
+    masked_res=[{'id': 1454663, 'name': 'Cox-Holloway International', 'domain': 'https://scott-smith.gamble-nelson.co', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'Galloway-Scott LLC', 'domain': 'https://davis.graham.co', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
+    # masked_sentence = op.mask_sentence(sentence)
+    # print("masked sentence:", masked_sentence)
+    # unmasked_sentence = op.unmask_summary(summary)
+    # print("unmasked summary:", unmasked_sentence)
+    masked_query = op.query_mask(query)
+    print("masked query:", masked_query)
+    unmasked_query= op.query_unmask(m_qury)
+    print("unmasked query:", unmasked_query)
+    # print(op.masking_results(aa))
+    # print("unmasked result: ",op.unmasking_results(masked_res))
