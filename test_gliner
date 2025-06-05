@@ -1,0 +1,12 @@
+from gliner import GLiNER
+import time
+start=time.time()
+model = GLiNER.from_pretrained("C:/Users/287937/Desktop/validation_database/gliner_package/gliner_package/gliner_model")
+end=time.time()
+print(f"Model loaded in {end - start:.2f} seconds")
+labels = ["person", "organization", "location"]
+text = "Elon Musk founded Tesla and lives in Texas."
+s=time.time()
+print(model.predict_entities(text, labels))
+e=time.time()
+print(f"Prediction made in {e - s:.2f} seconds")
