@@ -8,7 +8,7 @@ from sqlparse.tokens import Literal,String
 
 class DbOperations:
     def __init__(self):
-        self.map_path='companies_100k_mapping.json'
+        self.map_path='desc_mapping.json'
         self.forward_mapping = defaultdict(dict)
         self.backward_mapping = defaultdict(dict)
         # self.model=GLiNER.from_pretrained("urchade/gliner_base")
@@ -17,9 +17,13 @@ class DbOperations:
             self.forward_mapping = data.get('forward_mapping', {})
             self.backward_mapping = data.get('backward_mapping', {})
         self.entity_column_map={
-        'name': 'company',
-        'domain': 'url',
+        'name': 'names',
+        'company': 'company',
+        'location': 'location',
+        'description': 'description',
+
         }
+        self.descriptive_columns = []
     @staticmethod
     def time_it(func):
         def wrapper(*args, **kwargs):
@@ -172,7 +176,10 @@ class DbOperations:
             new_row={}
             for col,val in row.items():
                 entity= self.entity_column_map.get(col.lower())
+                if entity=='description':
+                    val = self.unmask_summary(val)
                 key=f"{entity}"
+
                 if key in self.backward_mapping and val in self.backward_mapping[key]:
                     new_row[col]=self.backward_mapping[key][val]
                 else:
@@ -187,6 +194,10 @@ class DbOperations:
             new_row={}
             for col,val in row.items():
                 entity= self.entity_column_map.get(col.lower())
+                # print(f"entity: {entity}, col: {col}, val: {val}")
+                if (entity == 'description'):
+                    val = self.mask_sentence(val)
+                    # print(val)
                 key=f"{entity}"
                 if key in self.forward_mapping and val in self.forward_mapping[key]:
                     new_row[col]=self.forward_mapping[key][val]
@@ -209,7 +220,7 @@ def main():
     # zz=' "infosys.com"  {{infosys}}    [infosys]    **infosys**   (infosys) "infosys" '
     # abc="infosys  {{infosys}}"
     masked_res=[{'id': 1454663, 'name': 'Cox-Holloway International', 'domain': 'https://scott-smith.gamble-nelson.co', 'year founded': 1981.0, 'industry': 'information technology and services', 'size range': '10001+', 'locality': 'bangalore, karnataka, india', 'country': 'india', 'linkedin url': 'linkedin.com/company/infosys', 'current employee estimate': 104752, 'total employee estimate': 215718}, {'id': 2520281, 'name': 'Galloway-Scott LLC', 'domain': 'https://davis.graham.co', 'year founded': None, 'industry': 'internet', 'size range': '1001 - 5000', 'locality': 'gresik, jawa timur, indonesia', 'country': 'bermuda', 'linkedin url': 'linkedin.com/company/pwd', 'current employee estimate': 1441, 'total employee estimate': 1541}]
-    # masked_sentence = op.mask_sentence(sentence)
+    # masked_sentence = op.mask_sentence(sentence)Q1a
     # print("masked sentence:", masked_sentence)
     # unmasked_sentence = op.unmask_summary(summary)
     # print("unmasked summary:", unmasked_sentence)
@@ -220,7 +231,12 @@ def main():
     # print(op.masking_results(aa))
     # print("unmasked result: ",op.unmasking_results(masked_res))
 op=DbOperations()
-sentence = 'name is ibm '
-print("masked is: ",op.mask_sentence(sentence))
-summary='name is Williams-Waller co'
-print("unmasked is: ", op.unmask_summary(summary))
+# sentence = 'name is ibm '
+# print("masked is: ",op.mask_sentence(sentence))
+# summary='name is Williams-Waller co'
+# print("unmasked is: ", op.unmask_summary(summary))
+aa=[{'Name':'Alice Johnson', 'Company':'TechNova','location':'New York', 'Description':'Alice Johnson recently joined TechNova as a software engineer.'},{'Name':'Carla Davis', 'Company':'CyberNest','location':'Chicago', 'Description': 'Carla Davis has worked at CyberNest for over 5 years.SHE IS A  FRIEND OF ALICE JOHNSON.'}]
+print(op.masking_results(aa))
+
+ff=[{'Name': 'Theresa Williams', 'Company': 'Williams-Waller Co', 'location': 'Port Brett, Delaware Region', 'Description': 'Theresa Williams recently joined Williams-Waller Co as a software engineer.'}, {'Name': 'Frances Wagner', 'Company': 'Harris-Roman Group', 'location': 'Smithbury, Delaware District', 'Description': 'Frances Wagner has worked at Harris-Roman Group for over 5 years.'}]
+print(op.unmasking_results(ff))

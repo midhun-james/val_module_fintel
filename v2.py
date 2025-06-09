@@ -30,9 +30,9 @@ class DataMaskerCSV:
         self.output_dir=self.base_name
         os.makedirs(self.output_dir, exist_ok=True)
         self.entity_column_map={
-                'name': 'company',
-                'domain': 'url',
-                'locality': 'location',
+                'Name': 'names',
+                'Company': 'company',
+                'Location': 'location',
                 }
         self.sensitive_columns = self.entity_column_map.keys()
         start=time.time()
@@ -75,7 +75,29 @@ class DataMaskerCSV:
             print(f'\n⏳ Execution time {func.__name__}: {end-start:.6f} seconds')
             return result
         return wrapper
-
+    def descriptive_finder(self):   
+        df =pd.read_excel(self.file_path,nrows=20)
+        des=[]
+        for col in df.columns:
+            series = df[col].dropna().astype(str)
+            if pd.api.types.is_numeric_dtype(series) or pd.api.types.is_datetime64_any_dtype(series):
+                continue
+            if len(series)==0:
+                continue
+            else:
+                
+                unique_ratio = series.nunique() / len(series)
+                avg_length = series.apply(len).mean()
+                avg_word_count = series.apply(lambda x: len(x.split())).mean()
+                has_punctuation = series.str.contains(r'[.,;:?!]').mean()
+                if (
+                    unique_ratio > 0.5 and
+                    avg_length > 10 and
+                    avg_word_count > 3 and
+                    has_punctuation > 0.3
+                ):
+                    des.append(col)
+        return des
     @time_it 
     def csv_extraction(self):
         
@@ -240,6 +262,6 @@ class DataMaskerCSV:
         except Exception as e:
             print(f"❌ Failed to import CSV: {e}")
 
-file_path = 'companies_100k.csv'
+file_path = 'desc.xlsx'
 masker = DataMaskerCSV(file_path)
 masker.csv_extraction()
